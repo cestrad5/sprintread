@@ -25,6 +25,12 @@ export function useRSVPEngine({
   const isPlayingRef = useRef(false);
   const requestRef = useRef<number>(undefined);
   const lastTimeRef = useRef<number>(0);
+  const wpmRef = useRef(wpm);
+
+  // Mantener wpmRef sincronizado
+  useEffect(() => {
+    wpmRef.current = wpm;
+  }, [wpm]);
   
   // Actualiza la palabra directamente en el DOM para evitar re-renders de React
   const updateDOM = useCallback((word: WordData) => {
@@ -47,7 +53,7 @@ export function useRSVPEngine({
     }
 
     const currentWord = words[currentIndex];
-    const baseMsPerWord = 60000 / wpm;
+    const baseMsPerWord = 60000 / wpmRef.current;
     const wordDuration = baseMsPerWord * currentWord.delayFactor;
 
     if (timestamp - lastTimeRef.current >= wordDuration) {
@@ -62,7 +68,7 @@ export function useRSVPEngine({
     }
 
     requestRef.current = requestAnimationFrame(animate);
-  }, [words, wpm, updateDOM, onComplete, onProgress]);
+  }, [words, updateDOM, onComplete, onProgress]);
 
   const play = useCallback(() => {
     if (indexRef.current >= words.length) {
