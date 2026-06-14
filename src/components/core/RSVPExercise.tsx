@@ -31,9 +31,10 @@ interface RSVPExerciseProps {
     description: string;
   };
   text: LessonText;
+  mode?: 'practice' | 'scored';
 }
 
-export function RSVPExercise({ userId, lesson, text }: RSVPExerciseProps) {
+export function RSVPExercise({ userId, lesson, text, mode = 'scored' }: RSVPExerciseProps) {
   const router = useRouter();
   const { saveSession } = useProgressStore();
   const { useDyslexicFont, wpm: globalWpm, setWpm: saveGlobalWpm } = useSettingsStore();
@@ -141,10 +142,12 @@ export function RSVPExercise({ userId, lesson, text }: RSVPExerciseProps) {
     if (isSprint && sprintCycle < 4) {
       // Launch micro-quiz
       setupMicroQuiz();
+    } else if (mode === 'practice') {
+      setStep('results');
     } else {
       setStep('quiz');
     }
-  }, [isSprint, sprintCycle]);
+  }, [isSprint, sprintCycle, mode]);
 
   // Setup RSVP Engine
   const { isPlaying, play, pause, reset, getCurrentIndex } = useRSVPEngine({
@@ -335,9 +338,9 @@ export function RSVPExercise({ userId, lesson, text }: RSVPExerciseProps) {
     }, 1200);
   };
 
-  // Save session to Firestore
+  // Save session to Firestore (only in scored mode)
   useEffect(() => {
-    if (step === 'results') {
+    if (step === 'results' && mode === 'scored') {
       saveGlobalWpm(baseWpm);
 
       const scorePercentage = Math.round((correctAnswersCount / text.questions.length) * 100);
@@ -450,6 +453,12 @@ export function RSVPExercise({ userId, lesson, text }: RSVPExerciseProps) {
           >
             Comenzar Entrenamiento <ArrowRight size={16} />
           </button>
+
+          {mode === 'practice' && (
+            <p className="mt-4 text-[10px] text-gray-400 text-center max-w-xs">
+              🏋️ Modo Práctica — Al terminar verás tu velocidad sin quiz de comprensión.
+            </p>
+          )}
         </div>
       )}
 
@@ -683,38 +692,40 @@ export function RSVPExercise({ userId, lesson, text }: RSVPExerciseProps) {
       {step === 'results' && (
         <div className="flex flex-col items-center text-center py-6">
           <div className="w-16 h-16 bg-red-50 text-focus rounded-full flex items-center justify-center mb-6 text-xl">
-            🏆
+            {mode === 'practice' ? '🏋️' : '🏆'}
           </div>
 
           <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight mb-2">
-            ¡Ejercicio Completado!
+            {mode === 'practice' ? '¡Práctica Completada!' : '¡Ejercicio Completado!'}
           </h2>
           <p className="text-gray-500 text-sm max-w-xs mx-auto mb-8">
-            Aquí están tus estadísticas de rendimiento.
+            {mode === 'practice' ? 'Tu velocidad de lectura en este recorrido.' : 'Aquí están tus estadísticas de rendimiento.'}
           </p>
 
-          <div className="grid grid-cols-2 gap-8 w-full max-w-md bg-background border border-border-soft p-6 rounded-2xl mb-8">
-            <div className="flex flex-col items-center border-r border-border-soft">
+          <div className={`grid gap-8 w-full max-w-md bg-background border border-border-soft p-6 rounded-2xl mb-8 ${mode === 'practice' ? 'grid-cols-1' : 'grid-cols-2'}`}>
+            <div className="flex flex-col items-center">
               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Velocidad</span>
               <span className="text-4xl font-black text-foreground mt-2">
                 {isSprint ? Math.round((baseWpm * 4 * 1.4 + baseWpm * 4 * 0.9) / 8) : baseWpm}
               </span>
-              <span className="text-xs text-gray-500 font-semibold mt-1">WPM (Promedio)</span>
+              <span className="text-xs text-gray-500 font-semibold mt-1">WPM {isSprint ? '(Promedio)' : ''}</span>
             </div>
 
-            <div className="flex flex-col items-center">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Comprensión</span>
-              <span className="text-4xl font-black text-foreground mt-2">{scorePercentage}%</span>
-              <span className="text-xs text-gray-500 font-semibold mt-1">
-                {correctAnswersCount} de {text.questions.length} correctas
-              </span>
-            </div>
+            {mode === 'scored' && (
+              <div className="flex flex-col items-center border-l border-border-soft">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Comprensión</span>
+                <span className="text-4xl font-black text-foreground mt-2">{scorePercentage}%</span>
+                <span className="text-xs text-gray-500 font-semibold mt-1">
+                  {correctAnswersCount} de {text.questions.length} correctas
+                </span>
+              </div>
+            )}
           </div>
 
           {isSprint && (
             <div className="p-4 bg-orange-50 border border-orange-100 rounded-2xl text-xs text-orange-800 max-w-sm mb-8">
               🚀 Peak Speed: <span className="font-extrabold">{peakWpm} WPM</span> en intervalos de sprint.<br/>
-              Aciertos en Sprints: <span className="font-extrabold">{microCorrectCount} de 6 preguntas rápidas</span>.
+              {mode === 'scored' && <>Aciertos en Sprints: <span className="font-extrabold">{microCorrectCount} de 6 preguntas rápidas</span>.</>}
             </div>
           )}
 
@@ -724,12 +735,22 @@ export function RSVPExercise({ userId, lesson, text }: RSVPExerciseProps) {
             </div>
           )}
 
-          <button
-            onClick={() => router.push('/')}
-            className="px-8 py-3.5 bg-foreground text-surface rounded-xl font-bold text-sm shadow-md hover:bg-black transition-all active:scale-95"
-          >
-            Volver al Dashboard
-          </button>
+          <div className="flex gap-3">
+            {mode === 'practice' && (
+              <button
+                onClick={() => { setStep('intro'); reset(); }}
+                className="px-6 py-3.5 bg-background border border-border-soft text-foreground rounded-xl font-bold text-sm hover:bg-gray-50 transition-all active:scale-95"
+              >
+                Practicar de Nuevo
+              </button>
+            )}
+            <button
+              onClick={() => router.push('/')}
+              className="px-8 py-3.5 bg-foreground text-surface rounded-xl font-bold text-sm shadow-md hover:bg-black transition-all active:scale-95"
+            >
+              Volver al Dashboard
+            </button>
+          </div>
         </div>
       )}
 

@@ -15,6 +15,7 @@ interface PacingExerciseProps {
     description: string;
   };
   text: LessonText;
+  mode?: 'practice' | 'scored';
 }
 
 interface LineData {
@@ -23,7 +24,7 @@ interface LineData {
   height: number;
 }
 
-export function PacingExercise({ userId, lesson, text }: PacingExerciseProps) {
+export function PacingExercise({ userId, lesson, text, mode = 'scored' }: PacingExerciseProps) {
   const router = useRouter();
   const { saveSession } = useProgressStore();
   const { useDyslexicFont, wpm: savedWpm, setWpm: saveGlobalWpm } = useSettingsStore();
@@ -152,32 +153,36 @@ export function PacingExercise({ userId, lesson, text }: PacingExerciseProps) {
   }, [isPlaying, activeLineIndex, lines, wpm]);
 
   // Scroll warning detector (For regression shield)
+  // Uses direction-based detection to avoid false positives on initial render/autoscroll
+  const lastScrollTopRef = useRef<number>(0);
   useEffect(() => {
     if (step !== 'reading' || !isRegressionShield) return;
 
+    // Sync lastScrollTop when the container first mounts or step changes
+    if (containerRef.current) {
+      lastScrollTopRef.current = containerRef.current.scrollTop;
+    }
+
     const handleScroll = () => {
-      if (!containerRef.current) return;
-      const activeLine = lines[activeLineIndex];
-      if (!activeLine) return;
+      if (!containerRef.current || !isPlaying) return;
+      const currentScrollTop = containerRef.current.scrollTop;
+      const isScrollingUp = currentScrollTop < lastScrollTopRef.current - 5; // 5px threshold to avoid micro-jitter
 
-      // If user tries to scroll back up past active line
-      const scrollPos = containerRef.current.scrollTop;
-      const activeLinePos = activeLine.offsetTop;
-
-      // We restrict scrolling back up, if they do, warn them
-      if (scrollPos < activeLinePos - 120 && isPlaying) {
+      // Only count as regression if user actively scrolls UP while reading (not first line)
+      if (isScrollingUp && activeLineIndex > 0) {
         setRegressionsCount(prev => prev + 1);
-        // Soft haptic warning if supported
         if (typeof navigator !== 'undefined' && navigator.vibrate) {
           navigator.vibrate([30, 50, 30]);
         }
       }
+
+      lastScrollTopRef.current = currentScrollTop;
     };
 
     const container = containerRef.current;
-    container?.addEventListener('scroll', handleScroll);
+    container?.addEventListener('scroll', handleScroll, { passive: true });
     return () => container?.removeEventListener('scroll', handleScroll);
-  }, [step, activeLineIndex, lines, isRegressionShield, isPlaying]);
+  }, [step, activeLineIndex, isRegressionShield, isPlaying]);
 
   // Autoscroll to keep active line in center
   useEffect(() => {
@@ -203,7 +208,7 @@ export function PacingExercise({ userId, lesson, text }: PacingExerciseProps) {
   const handleFinishedReading = () => {
     setIsPlaying(false);
     totalReadTimeRef.current = (performance.now() - startTimeRef.current) / 1000;
-    setStep('quiz');
+    setStep(mode === 'practice' ? 'results' : 'quiz');
   };
 
   const useEmergencyButton = () => {
@@ -240,9 +245,9 @@ export function PacingExercise({ userId, lesson, text }: PacingExerciseProps) {
     }, 1200);
   };
 
-  // Save session to Firestore
+  // Save session to Firestore (only in scored mode)
   useEffect(() => {
-    if (step === 'results') {
+    if (step === 'results' && mode === 'scored') {
       saveGlobalWpm(wpm); // Persist speed preference
 
       const scorePercentage = Math.round((correctAnswersCount / text.questions.length) * 100);
@@ -312,6 +317,12 @@ export function PacingExercise({ userId, lesson, text }: PacingExerciseProps) {
           >
             Iniciar Lectura <ArrowRight size={16} />
           </button>
+
+          {mode === 'practice' && (
+            <p className="mt-4 text-[10px] text-gray-400 text-center max-w-xs">
+              🏋️ Modo Práctica — Al terminar verás tu velocidad sin quiz de comprensión.
+            </p>
+          )}
         </div>
       )}
 
@@ -339,7 +350,7 @@ export function PacingExercise({ userId, lesson, text }: PacingExerciseProps) {
             )}
 
             {/* Word wrap container */}
-            <div className="relative text-lg md:text-xl font-sans leading-relaxed tracking-normal select-none">
+            <div className={`relative text-lg md:text-xl leading-relaxed tracking-normal select-none ${useDyslexicFont ? 'font-dyslexic' : 'font-sans'}`}>
               {rawWords.map((word, idx) => {
                 // Determine if this word's line is before the active line
                 let lineIdx = -1;
@@ -526,30 +537,32 @@ export function PacingExercise({ userId, lesson, text }: PacingExerciseProps) {
       {step === 'results' && (
         <div className="flex flex-col items-center text-center py-6">
           <div className="w-16 h-16 bg-red-50 text-focus rounded-full flex items-center justify-center mb-6 text-xl">
-            🏆
+            {mode === 'practice' ? '🏋️' : '🏆'}
           </div>
 
           <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight mb-2">
-            ¡Ejercicio Completado!
+            {mode === 'practice' ? '¡Práctica Completada!' : '¡Ejercicio Completado!'}
           </h2>
           <p className="text-gray-500 text-sm max-w-xs mx-auto mb-8">
-            Aquí están tus estadísticas de rendimiento.
+            {mode === 'practice' ? 'Tu velocidad de lectura en este recorrido.' : 'Aquí están tus estadísticas de rendimiento.'}
           </p>
 
-          <div className="grid grid-cols-2 gap-8 w-full max-w-md bg-background border border-border-soft p-6 rounded-2xl mb-8">
-            <div className="flex flex-col items-center border-r border-border-soft">
+          <div className={`grid gap-8 w-full max-w-md bg-background border border-border-soft p-6 rounded-2xl mb-8 ${mode === 'practice' ? 'grid-cols-1' : 'grid-cols-2'}`}>
+            <div className="flex flex-col items-center">
               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Velocidad</span>
               <span className="text-4xl font-black text-foreground mt-2">{wpm}</span>
               <span className="text-xs text-gray-500 font-semibold mt-1">WPM</span>
             </div>
 
-            <div className="flex flex-col items-center">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Comprensión</span>
-              <span className="text-4xl font-black text-foreground mt-2">{scorePercentage}%</span>
-              <span className="text-xs text-gray-500 font-semibold mt-1">
-                {correctAnswersCount} de {text.questions.length} correctas
-              </span>
-            </div>
+            {mode === 'scored' && (
+              <div className="flex flex-col items-center border-l border-border-soft">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Comprensión</span>
+                <span className="text-4xl font-black text-foreground mt-2">{scorePercentage}%</span>
+                <span className="text-xs text-gray-500 font-semibold mt-1">
+                  {correctAnswersCount} de {text.questions.length} correctas
+                </span>
+              </div>
+            )}
           </div>
 
           {isRegressionShield && (
@@ -558,14 +571,25 @@ export function PacingExercise({ userId, lesson, text }: PacingExerciseProps) {
             </div>
           )}
 
-          <button
-            onClick={() => router.push('/')}
-            className="px-8 py-3.5 bg-foreground text-surface rounded-xl font-bold text-sm shadow-md hover:bg-black transition-all active:scale-95"
-          >
-            Volver al Dashboard
-          </button>
+          <div className="flex gap-3">
+            {mode === 'practice' && (
+              <button
+                onClick={() => { setStep('intro'); setActiveLineIndex(0); setRegressionsCount(0); }}
+                className="px-6 py-3.5 bg-background border border-border-soft text-foreground rounded-xl font-bold text-sm hover:bg-gray-50 transition-all active:scale-95"
+              >
+                Practicar de Nuevo
+              </button>
+            )}
+            <button
+              onClick={() => router.push('/')}
+              className="px-8 py-3.5 bg-foreground text-surface rounded-xl font-bold text-sm shadow-md hover:bg-black transition-all active:scale-95"
+            >
+              Volver al Dashboard
+            </button>
+          </div>
         </div>
       )}
+
 
     </div>
   );

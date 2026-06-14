@@ -296,17 +296,28 @@ export default function Home() {
                             )}
 
                             {moduleUnlocked ? (
-                              <Link 
-                                href={`/lesson/${lesson.id}`}
-                                className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1 transition-all ${
-                                  isUpNext
-                                    ? 'bg-focus hover:bg-red-700 text-white shadow-md active:scale-95'
-                                    : 'bg-background hover:bg-border-soft text-foreground border border-border-soft active:scale-95'
-                                }`}
-                              >
-                                {isCompleted ? 'Re-hacer' : 'Iniciar'}
-                                <ChevronRight size={14} />
-                              </Link>
+                              <div className="flex items-center gap-2">
+                                {/* Practice button */}
+                                <Link 
+                                  href={`/lesson/${lesson.id}?practice=true`}
+                                  className="px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1 transition-all bg-background hover:bg-amber-50 text-amber-700 border border-amber-200 active:scale-95"
+                                  title="Practicar sin guardar resultados"
+                                >
+                                  🏋️
+                                </Link>
+                                {/* Scored / official session */}
+                                <Link 
+                                  href={`/lesson/${lesson.id}`}
+                                  className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1 transition-all ${
+                                    isUpNext
+                                      ? 'bg-focus hover:bg-red-700 text-white shadow-md active:scale-95'
+                                      : 'bg-background hover:bg-border-soft text-foreground border border-border-soft active:scale-95'
+                                  }`}
+                                >
+                                  {isCompleted ? 'Re-hacer' : 'Iniciar'}
+                                  <ChevronRight size={14} />
+                                </Link>
+                              </div>
                             ) : (
                               <div className="p-2 text-gray-400 bg-gray-50 rounded-xl border border-border-soft">
                                 <Lock size={14} />
