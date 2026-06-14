@@ -152,37 +152,75 @@ export function PacingExercise({ userId, lesson, text, mode = 'scored' }: Pacing
     };
   }, [isPlaying, activeLineIndex, lines, wpm]);
 
+  const activeLineIndexRef = useRef<number>(activeLineIndex);
+  useEffect(() => {
+    activeLineIndexRef.current = activeLineIndex;
+  }, [activeLineIndex]);
+
   // Scroll warning detector (For regression shield)
-  // Uses direction-based detection to avoid false positives on initial render/autoscroll
+  // Only triggers when the scroll event is accompanied by an actual user interaction (wheel, touch, drag, keydown)
   const lastScrollTopRef = useRef<number>(0);
+  const isUserScrollingRef = useRef<boolean>(false);
+
   useEffect(() => {
     if (step !== 'reading' || !isRegressionShield) return;
 
-    // Sync lastScrollTop when the container first mounts or step changes
-    if (containerRef.current) {
-      lastScrollTopRef.current = containerRef.current.scrollTop;
-    }
+    const container = containerRef.current;
+    if (!container) return;
+
+    lastScrollTopRef.current = container.scrollTop;
 
     const handleScroll = () => {
-      if (!containerRef.current || !isPlaying) return;
-      const currentScrollTop = containerRef.current.scrollTop;
+      if (!isPlaying) return;
+      const currentScrollTop = container.scrollTop;
       const isScrollingUp = currentScrollTop < lastScrollTopRef.current - 5; // 5px threshold to avoid micro-jitter
 
-      // Only count as regression if user actively scrolls UP while reading (not first line)
-      if (isScrollingUp && activeLineIndex > 0) {
+      // Only count regression if user actively scrolled UP and it was user-initiated
+      if (isScrollingUp && activeLineIndexRef.current > 0 && isUserScrollingRef.current) {
         setRegressionsCount(prev => prev + 1);
         if (typeof navigator !== 'undefined' && navigator.vibrate) {
           navigator.vibrate([30, 50, 30]);
         }
+        // Reset user scrolling flag to prevent multiple rapid triggers from a single scroll action
+        isUserScrollingRef.current = false;
       }
 
       lastScrollTopRef.current = currentScrollTop;
     };
 
-    const container = containerRef.current;
-    container?.addEventListener('scroll', handleScroll, { passive: true });
-    return () => container?.removeEventListener('scroll', handleScroll);
-  }, [step, activeLineIndex, isRegressionShield, isPlaying]);
+    const setUserScrolling = () => {
+      isUserScrollingRef.current = true;
+    };
+
+    const handleTouchEnd = () => {
+      // Keep active briefly to capture final deceleration of momentum scroll
+      setTimeout(() => {
+        isUserScrollingRef.current = false;
+      }, 800);
+    };
+
+    const handleMouseUp = () => {
+      isUserScrollingRef.current = false;
+    };
+
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    container.addEventListener('wheel', setUserScrolling, { passive: true });
+    container.addEventListener('touchstart', setUserScrolling, { passive: true });
+    container.addEventListener('touchend', handleTouchEnd, { passive: true });
+    container.addEventListener('mousedown', setUserScrolling, { passive: true });
+    window.addEventListener('mouseup', handleMouseUp, { passive: true });
+    container.addEventListener('keydown', setUserScrolling, { passive: true });
+
+    return () => {
+      container.removeEventListener('scroll', handleScroll);
+      container.removeEventListener('wheel', setUserScrolling);
+      container.removeEventListener('touchstart', setUserScrolling);
+      container.removeEventListener('touchend', handleTouchEnd);
+      container.removeEventListener('mousedown', setUserScrolling);
+      window.removeEventListener('mouseup', handleMouseUp);
+      container.removeEventListener('keydown', setUserScrolling);
+    };
+  }, [step, isRegressionShield, isPlaying]);
 
   // Autoscroll to keep active line in center
   useEffect(() => {
